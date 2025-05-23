@@ -1,46 +1,52 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
-use aiken/primitive/string
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 
 pub type Datum {
-  owner: VerificationKeyHash,
+  Datum { owner: VerificationKeyHash, content: ByteArray }
 }
 
 pub type Redeemer {
-  msg: ByteArray,
+  UpdateDatum { new_content: ByteArray }
+  ChangeOwner { new_owner: VerificationKeyHash }
 }
 
 validator hello_world {
   spend(
     datum: Option<Datum>,
     redeemer: Redeemer,
-    _own_ref: OutputReference,
+    own_ref: OutputReference,
     self: Transaction,
   ) {
-    trace @"redeemer": string.from_bytearray(redeemer.msg)
-    expect Some(Datum { owner }) = datum
-    let must_say_hello = redeemer.msg == "Hello, World!"
-    let must_be_signed = list.has(self.extra_signatories, owner)
-    must_say_hello? && must_be_signed?
+    expect Some(Datum { owner, content }) = datum
+
+    expect Some(input) =
+      self.inputs
+        |> transaction.find_input(own_ref)
+
+    let script_addr = input.output.address
+
+    let outs_back_self =
+      self.outputs
+        |> list.filter(fn(o) { o.address == script_addr })
+
+    expect [out] = outs_back_self
+
+    expect InlineDatum(d) = out.datum
+    expect Datum { owner: out_owner, content: out_content } = d
+
+    when redeemer is {
+      UpdateDatum { new_content } ->
+        list.has(self.extra_signatories, owner) && out_owner == owner && out_content == new_content
+      ChangeOwner { new_owner } ->
+        list.has(self.extra_signatories, owner) && list.has(
+          self.extra_signatories,
+          new_owner,
+        ) && out_owner == new_owner && out_content == content
+    }
   }
 
   else(_) {
     fail
   }
-}
-
-// Test the validator
-// ...rest of the code is unchanged
-test hello_world_example() {
-  let datum =
-    Datum { owner: #"00000000000000000000000000000000000000000000000000000000" }
-  let redeemer = Redeemer { msg: "Hello, World!" }
-  let placeholder_utxo = OutputReference { transaction_id: "", output_index: 0 }
-  hello_world.spend(
-    Some(datum),
-    redeemer,
-    placeholder_utxo,
-    Transaction { ..transaction.placeholder, extra_signatories: [datum.owner] },
-  )
 }
