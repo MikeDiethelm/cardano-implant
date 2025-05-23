@@ -82,7 +82,7 @@ class HelloWorldRedeemer(PlutusData):
     msg: bytes
  
 context = BlockFrostChainContext(
-    project_id="your_project_id",
+    project_id="previewc3NRhWomtSTZ3p0MBCawyMxcbuOt4I5X",
     base_url="https://cardano-preview.blockfrost.io/api/",
 )
  
@@ -98,7 +98,7 @@ utxo = get_utxo_from_str(sys.argv[1], Address(
 ))
  
 # build redeemer
-redeemer = Redeemer(data=HelloWorldRedeemer(msg=0))
+redeemer = Redeemer(data=HelloWorldRedeemer(msg=b"Hello World!"))
  
 # execute transaction
 tx_hash = unlock(

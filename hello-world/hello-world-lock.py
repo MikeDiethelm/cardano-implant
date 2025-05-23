@@ -71,7 +71,7 @@ class HelloWorldDatum(PlutusData):
     owner: bytes
  
 context = BlockFrostChainContext(
-    project_id="your_project_id",
+    project_id="preview c3NR hWom tSTZ 3p0M BCaw yMxc buOt 4I5X",
     base_url="https://cardano-preview.blockfrost.io/api/",
 )
   
