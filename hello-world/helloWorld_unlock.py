@@ -17,6 +17,7 @@ from pycardano.hash import VerificationKeyHash, TransactionId, ScriptHash
 import json
 import sys
 import os
+import glob
 
 
 def read_validator() -> dict:
@@ -92,28 +93,30 @@ def update_datum(utxo: UTxO, new_content: bytes) -> TransactionId:
 
 def change_owner(utxo: UTxO) -> TransactionId:
     # alte Dateien löschen
-    for path in ("new_owner*.sk", "new_owner*.vkey", "new_owner*.addr"):
-        for f in glob.glob(path):
+    for pattern in ("new_owner*.sk", "new_owner*.vkey", "new_owner*.addr"):
+        for f in glob.glob(pattern):
             os.remove(f)
 
-    # 1) Neues Schlüssel-Paar erzeugen
+    # 1) Neues Schlüssel-Paar erzeugen und speichern
     new_sk = PaymentSigningKey.generate()
     new_vk = PaymentVerificationKey.from_signing_key(new_sk)
-    # 2) Dateien speichern
     new_sk.save("new_owner.sk")
     new_vk.save("new_owner.vkey")
     addr = Address(payment_part=new_vk.hash(), network=Network.TESTNET)
     with open("new_owner.addr", "w") as f:
         f.write(str(addr))
 
-    # 3) Redeemer und neues Datum mit dem echten Hash aus new_vk
-    new_owner_hash = new_vk.hash().to_primitive()
-    redeemer = Redeemer(data=ChangeOwnerRedeemer(new_owner=new_owner_hash))
+    # 2) Bytes und VKH extrahieren
+    new_owner_bytes = new_vk.hash().to_primitive()    # für Redeemer/Daten
+    new_owner_vkh   = new_vk.hash()                  # für required_signers
+
+    # 3) Redeemer + neues Datum
+    redeemer = Redeemer(data=ChangeOwnerRedeemer(new_owner=new_owner_bytes))
     raw = utxo.output.datum
     old = ContractDatum.from_cbor(raw.cbor)
-    new_datum = ContractDatum(owner=new_owner_hash, content=old.content)
+    new_datum = ContractDatum(owner=new_owner_bytes, content=old.content)
 
-    # 4) Transaktion bauen und mit beiden Keys signieren
+    # 4) Transaktion aufbauen und signieren
     sk = PaymentSigningKey.load("./me.sk")
     vk = PaymentVerificationKey.from_signing_key(sk)
     change_addr = Address(payment_part=vk.hash(), network=Network.TESTNET)
@@ -126,7 +129,8 @@ def change_owner(utxo: UTxO) -> TransactionId:
         amount=utxo.output.amount,
         datum=new_datum,
     ))
-    builder.required_signers = [old.owner, new_owner_hash]
+    # hier verwenden wir den echten VerificationKeyHash
+    builder.required_signers = [old.owner, new_owner_vkh]
 
     signed = builder.build_and_sign([sk, new_sk], change_address=change_addr)
     tx_hash = context.submit_tx(signed)
@@ -158,7 +162,7 @@ utxo = get_utxo_from_str(tx_id, Address(payment_part=validator["script_hash"], n
 if mode == "update":
     update_datum(utxo, param.encode())
 elif mode == "change_owner":
-    change_owner(utxo, bytes.fromhex(param))
+    change_owner(utxo)
 else:
     raise ValueError("Usage: python helloWorld_unlock.py <update|change_owner> <tx_id> [param]")
 
